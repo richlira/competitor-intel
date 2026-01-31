@@ -7,7 +7,7 @@ import { parsePdf } from "./reducto";
 const firecrawl = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY! });
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
-type Emit = (step: string, detail?: string) => void;
+type Emit = (step: string, detail?: string, data?: Record<string, unknown>) => void;
 
 interface CompetitorInfo {
   name: string;
@@ -49,6 +49,7 @@ Website content:
 ${startupContent}`
   );
   const extraction = JSON.parse(extractionRaw.replace(/```json?\n?|\n?```/g, ""));
+  emit("startup_info", `Identified: ${extraction.name}`, { startup: extraction });
 
   // 3. Search for competitors
   emit("searching", `Finding competitors for ${extraction.name}...`);
@@ -80,11 +81,13 @@ Exclude ${extraction.name} itself and any non-competitor URLs (blogs, review agg
   const topCompetitors: { name: string; url: string }[] = JSON.parse(
     rankingRaw.replace(/```json?\n?|\n?```/g, "")
   );
+  emit("competitors_found", `Found ${topCompetitors.length} competitors`, { competitors: topCompetitors });
 
   // 5. Deep scrape competitors
   emit("deep_scraping", `Deep scraping ${topCompetitors.length} competitors...`);
   const competitorData = await Promise.all(
     topCompetitors.slice(0, 5).map(async (comp) => {
+      emit("competitor_scraping", `Scraping ${comp.name}...`, { name: comp.name });
       const pages = await Promise.all([
         firecrawl.scrape(comp.url, { formats: ["markdown"] }).catch(() => null),
         firecrawl.scrape(`${comp.url}/pricing`, { formats: ["markdown"] }).catch(() => null),
@@ -102,6 +105,8 @@ Exclude ${extraction.name} itself and any non-competitor URLs (blogs, review agg
           if (parsed) pdfContent += parsed.slice(0, 2000);
         }
       }
+
+      emit("competitor_done", `${comp.name} scraped`, { name: comp.name });
 
       return {
         name: comp.name,
@@ -143,6 +148,7 @@ ${JSON.stringify(competitorData, null, 2).slice(0, 30000)}`,
     "You are an expert competitive intelligence analyst. Be specific and actionable. Base analysis only on the provided data."
   );
   const analysis = JSON.parse(analysisRaw.replace(/```json?\n?|\n?```/g, ""));
+  emit("analysis_ready", "Analysis complete", { analysis });
 
   // 7. Store in MongoDB
   emit("storing", "Saving to database...");

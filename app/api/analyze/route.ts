@@ -13,9 +13,9 @@ export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const emit = (step: string, detail?: string) => {
+      const emit = (step: string, detail?: string, data?: Record<string, unknown>) => {
         controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ step, detail })}\n\n`)
+          encoder.encode(`data: ${JSON.stringify({ step, detail, data })}\n\n`)
         );
       };
 
