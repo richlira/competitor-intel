@@ -3,12 +3,12 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
+/* ─── Types ─── */
 interface SSEEvent {
   step: string;
   detail?: string;
   data?: Record<string, unknown>;
 }
-
 interface StartupInfo {
   name: string;
   product: string;
@@ -16,184 +16,116 @@ interface StartupInfo {
   keywords: string[];
   targetMarket: string;
 }
-
-interface Competitor {
-  name: string;
-  url: string;
-}
-
+interface Competitor { name: string; url: string }
 interface CompetitorAnalysis {
-  name: string;
-  url: string;
-  summary: string;
-  pricing: string;
-  recentMoves: string;
-  hiringSignals: string;
-  keyDifferentiator: string;
-  threatLevel: string;
+  name: string; url: string; summary: string; pricing: string;
+  recentMoves: string; hiringSignals: string; keyDifferentiator: string; threatLevel: string;
 }
-
 interface Analysis {
   competitors: CompetitorAnalysis[];
   marketIntelligence: string[];
   recommendations: string[];
 }
 
-const STEPS = [
-  "scraping",
-  "extracting",
-  "searching",
-  "ranking",
-  "deep_scraping",
-  "analyzing",
-  "storing",
-  "emailing",
-] as const;
-
-const STEP_META: Record<
-  string,
-  { label: string; icon: string; description: string }
-> = {
-  scraping: {
-    label: "Scraping startup",
-    icon: "globe",
-    description: "Fetching website content with Firecrawl",
-  },
-  extracting: {
-    label: "Analyzing startup",
-    icon: "brain",
-    description: "Claude is extracting product & industry info",
-  },
-  startup_info: { label: "Startup identified", icon: "check", description: "" },
-  searching: {
-    label: "Searching for competitors",
-    icon: "search",
-    description: "Running 3 parallel searches via Firecrawl",
-  },
-  ranking: {
-    label: "Ranking competitors",
-    icon: "trophy",
-    description: "Claude is picking the top 5 threats",
-  },
-  competitors_found: { label: "Competitors identified", icon: "users", description: "" },
-  deep_scraping: {
-    label: "Deep scraping competitors",
-    icon: "layers",
-    description: "Scraping pricing, about, careers for each",
-  },
-  competitor_scraping: { label: "Scraping", icon: "download", description: "" },
-  competitor_done: { label: "Scraped", icon: "check", description: "" },
-  analyzing: {
-    label: "Generating analysis",
-    icon: "sparkles",
-    description: "Claude is writing the competitive brief",
-  },
-  analysis_ready: { label: "Analysis complete", icon: "check", description: "" },
-  storing: {
-    label: "Saving to database",
-    icon: "database",
-    description: "Storing snapshot in MongoDB",
-  },
-  emailing: {
-    label: "Sending report",
-    icon: "mail",
-    description: "Delivering via Resend",
-  },
-  done: { label: "Complete", icon: "check", description: "" },
-  error: { label: "Error", icon: "alert", description: "" },
+/* ─── Service Branding ─── */
+const SERVICES: Record<string, { name: string; color: string; bg: string; border: string }> = {
+  firecrawl: { name: "Firecrawl", color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/20" },
+  claude: { name: "Claude", color: "text-violet-400", bg: "bg-violet-500/10", border: "border-violet-500/20" },
+  reducto: { name: "Reducto", color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20" },
+  mongodb: { name: "MongoDB", color: "text-green-400", bg: "bg-green-500/10", border: "border-green-500/20" },
+  resend: { name: "Resend", color: "text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/20" },
 };
 
-function Icon({ name, className }: { name: string; className?: string }) {
-  const icons: Record<string, string> = {
-    globe: "M12 21a9 9 0 100-18 9 9 0 000 18zM3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 014 9 15 15 0 01-4 9 15 15 0 01-4-9 15 15 0 014-9z",
-    brain: "M12 2a7 7 0 00-5.2 2.3A6.5 6.5 0 003 10c0 2.5 1.4 4.7 3.5 5.8A5.5 5.5 0 0012 22a5.5 5.5 0 005.5-6.2A6.5 6.5 0 0021 10a6.5 6.5 0 00-3.8-5.7A7 7 0 0012 2z",
-    search: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z",
-    trophy: "M6 9H4.5a2.5 2.5 0 010-5H6m12 5h1.5a2.5 2.5 0 000-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22m10 0c0-1.76-.85-3.25-2.03-3.79-.5-.23-.97-.66-.97-1.21v-2.34m-4-2.17l-.13.01C8.7 12.64 8 11.38 8 10V5c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v5c0 1.38-.7 2.64-1.87 2.5L14 12.49",
-    users: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm14 10v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
-    layers: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
-    download: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4m4-5l5 5 5-5m-5 5V3",
-    sparkles: "M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8L12 2z",
-    database: "M12 2C6.48 2 2 4.02 2 6.5v11C2 19.98 6.48 22 12 22s10-2.02 10-4.5v-11C22 4.02 17.52 2 12 2zM2 11.5c0 2.48 4.48 4.5 10 4.5s10-2.02 10-4.5",
-    mail: "M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
-    check: "M20 6L9 17l-5-5",
-    alert: "M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z",
-  };
-  return (
-    <svg
-      className={className || "w-4 h-4"}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d={icons[name] || icons.check} />
+const STEP_SERVICE: Record<string, string> = {
+  scraping: "firecrawl", extracting: "claude", startup_info: "claude",
+  searching: "firecrawl", ranking: "claude", competitors_found: "claude",
+  deep_scraping: "firecrawl", competitor_scraping: "firecrawl",
+  competitor_done: "firecrawl", pdf_parsing: "reducto",
+  analyzing: "claude", analysis_ready: "claude",
+  storing: "mongodb", emailing: "resend",
+};
+
+const STEP_LABELS: Record<string, string> = {
+  scraping: "Scraping website", extracting: "Extracting company info",
+  searching: "Searching for competitors", ranking: "Ranking top threats",
+  deep_scraping: "Deep scraping competitors", analyzing: "Writing competitive brief",
+  storing: "Saving to database", done: "Analysis complete",
+};
+
+const MAIN_STEPS = ["scraping", "extracting", "searching", "ranking", "deep_scraping", "analyzing", "storing"] as const;
+
+/* ─── Service Icons (SVG) ─── */
+function ServiceIcon({ service, size = 16 }: { service: string; size?: number }) {
+  const s = SERVICES[service];
+  if (!s) return null;
+  const cls = `${s.color} flex-shrink-0`;
+  if (service === "firecrawl") return (
+    <svg className={cls} width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2C8 6 4 10 4 14a8 8 0 0016 0c0-4-4-8-8-12zm0 18a6 6 0 01-6-6c0-2.5 2-5.5 6-9.5 4 4 6 7 6 9.5a6 6 0 01-6 6z"/>
+      <path d="M12 20a4 4 0 01-4-4c0-2 1.5-4 4-6.5 2.5 2.5 4 4.5 4 6.5a4 4 0 01-4 4z" opacity="0.5"/>
     </svg>
   );
-}
-
-function Spinner() {
-  return (
-    <div className="w-4 h-4 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+  if (service === "claude") return (
+    <svg className={cls} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8" strokeLinecap="round"/>
+    </svg>
   );
+  if (service === "reducto") return (
+    <svg className={cls} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+    </svg>
+  );
+  if (service === "mongodb") return (
+    <svg className={cls} width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7zm0 10a3 3 0 110-6 3 3 0 010 6z"/>
+    </svg>
+  );
+  if (service === "resend") return (
+    <svg className={cls} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+    </svg>
+  );
+  return null;
 }
 
 function ThreatBadge({ level }: { level: string }) {
-  const colors = {
-    high: "bg-red-500/20 text-red-400 border-red-500/30",
-    medium: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-    low: "bg-green-500/20 text-green-400 border-green-500/30",
-  };
-  return (
-    <span
-      className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
-        colors[level as keyof typeof colors] || colors.low
-      }`}
-    >
-      {level}
-    </span>
-  );
+  const c = { high: "bg-red-500/20 text-red-400 border-red-500/30", medium: "bg-amber-500/20 text-amber-400 border-amber-500/30", low: "bg-green-500/20 text-green-400 border-green-500/30" };
+  return <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${c[level as keyof typeof c] || c.low}`}>{level}</span>;
 }
 
+/* ─── Main Component ─── */
 export default function Home() {
   const [url, setUrl] = useState("");
-  const [email, setEmail] = useState("");
+  const [phase, setPhase] = useState<"input" | "running" | "done">("input");
   const [events, setEvents] = useState<SSEEvent[]>([]);
-  const [running, setRunning] = useState(false);
   const [startupInfo, setStartupInfo] = useState<StartupInfo | null>(null);
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [scrapedCompetitors, setScrapedCompetitors] = useState<Set<string>>(new Set());
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const [analysisId, setAnalysisId] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const feedRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
   }, [events]);
 
-  const mainStepsCompleted = new Set(
-    events.filter((e) => STEPS.includes(e.step as (typeof STEPS)[number])).map((e) => e.step)
-  );
-  const progress = (mainStepsCompleted.size / STEPS.length) * 100;
+  const completedMain = new Set(events.filter(e => (MAIN_STEPS as readonly string[]).includes(e.step)).map(e => e.step));
+  const progress = phase === "done" ? 100 : (completedMain.size / MAIN_STEPS.length) * 100;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (running) return;
-    setRunning(true);
-    setEvents([]);
-    setStartupInfo(null);
-    setCompetitors([]);
-    setScrapedCompetitors(new Set());
-    setAnalysis(null);
-    abortRef.current = new AbortController();
+    if (phase === "running") return;
+    setPhase("running");
+    setEvents([]); setStartupInfo(null); setCompetitors([]); setScrapedCompetitors(new Set()); setAnalysis(null); setAnalysisId(null); setSent(false);
 
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startupUrl: url, email }),
-        signal: abortRef.current.signal,
+        body: JSON.stringify({ startupUrl: url }),
       });
       const reader = res.body?.getReader();
       if (!reader) throw new Error("No stream");
@@ -209,355 +141,375 @@ export default function Home() {
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           const parsed: SSEEvent = JSON.parse(line.slice(6));
-          setEvents((prev) => [...prev, parsed]);
-
-          if (parsed.step === "startup_info" && parsed.data?.startup) {
-            setStartupInfo(parsed.data.startup as unknown as StartupInfo);
+          setEvents(prev => [...prev, parsed]);
+          if (parsed.step === "startup_info" && parsed.data?.startup) setStartupInfo(parsed.data.startup as unknown as StartupInfo);
+          if (parsed.step === "competitors_found" && parsed.data?.competitors) setCompetitors(parsed.data.competitors as unknown as Competitor[]);
+          if (parsed.step === "competitor_done" && parsed.data?.name) setScrapedCompetitors(prev => new Set(prev).add(parsed.data!.name as string));
+          if (parsed.step === "analysis_ready" && parsed.data?.analysis) setAnalysis(parsed.data.analysis as unknown as Analysis);
+          if (parsed.step === "done") {
+            setPhase("done");
+            if (parsed.data?.analysisId) setAnalysisId(parsed.data.analysisId as string);
+            if (parsed.data?.analysis) setAnalysis(parsed.data.analysis as unknown as Analysis);
           }
-          if (parsed.step === "competitors_found" && parsed.data?.competitors) {
-            setCompetitors(parsed.data.competitors as unknown as Competitor[]);
-          }
-          if (parsed.step === "competitor_done" && parsed.data?.name) {
-            setScrapedCompetitors((prev) => new Set(prev).add(parsed.data!.name as string));
-          }
-          if (parsed.step === "analysis_ready" && parsed.data?.analysis) {
-            setAnalysis(parsed.data.analysis as unknown as Analysis);
-          }
+          if (parsed.step === "error") setPhase("done");
         }
       }
     } catch (err: unknown) {
-      if (err instanceof Error && err.name !== "AbortError") {
-        setEvents((prev) => [
-          ...prev,
-          { step: "error", detail: err instanceof Error ? err.message : "Failed" },
-        ]);
-      }
-    } finally {
-      setRunning(false);
+      setEvents(prev => [...prev, { step: "error", detail: err instanceof Error ? err.message : "Failed" }]);
+      setPhase("done");
     }
   }
 
-  const isDone = events.some((s) => s.step === "done");
-  const hasError = events.some((s) => s.step === "error");
-  const currentStep = events.length > 0 ? events[events.length - 1].step : null;
+  async function handleSendEmail(e: React.FormEvent) {
+    e.preventDefault();
+    if (!analysisId || !email) return;
+    setSending(true);
+    try {
+      await fetch("/api/send-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, analysisId }),
+      });
+      setSent(true);
+    } catch {} finally { setSending(false); }
+  }
 
-  // Deduplicate: show only main pipeline steps + special data events
-  const displaySteps = events.filter(
-    (e) =>
-      STEPS.includes(e.step as (typeof STEPS)[number]) ||
-      e.step === "done" ||
-      e.step === "error"
+  const displaySteps = events.filter(e =>
+    (MAIN_STEPS as readonly string[]).includes(e.step) || e.step === "done" || e.step === "error"
   );
 
-  return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      <div className="max-w-2xl mx-auto px-6 py-12">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-10"
-        >
-          <h1 className="text-4xl font-bold tracking-tight">Competitor Intel</h1>
-          <p className="text-zinc-500 mt-2 text-lg">
-            Paste a startup URL, get a competitive intelligence report in your inbox.
-          </p>
+  /* ─── INPUT PHASE ─── */
+  if (phase === "input") {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center">
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="text-center w-full max-w-2xl px-6">
+          <h1 className="text-5xl font-bold bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-400 bg-clip-text text-transparent mb-3">
+            Competitor Intel
+          </h1>
+          <p className="text-zinc-500 text-lg mb-10">Any company. Any industry. Real-time competitive analysis.</p>
+
+          {/* Main input box with glow */}
+          <form onSubmit={handleSubmit} className="relative">
+            {/* Warm ambient glow (bottom-left) */}
+            <div
+              className="absolute blur-[80px] opacity-50 pointer-events-none"
+              style={{ top: "0", bottom: "-60px", left: "-100px", right: "50%", background: "radial-gradient(ellipse at 20% 80%, #ea580c, transparent 70%)" }}
+            />
+            {/* Cool ambient glow (bottom-right) */}
+            <div
+              className="absolute blur-[80px] opacity-40 pointer-events-none"
+              style={{ top: "0", bottom: "-60px", right: "-100px", left: "50%", background: "radial-gradient(ellipse at 80% 80%, #6366f1, transparent 70%)" }}
+            />
+            {/* Subtle gradient border */}
+            <div
+              className="absolute -inset-[1px] rounded-2xl opacity-25 pointer-events-none"
+              style={{ background: "linear-gradient(135deg, #ea580c 0%, #555 40%, #555 60%, #6366f1 100%)" }}
+            />
+
+            {/* The black box */}
+            <div className="relative z-10 bg-[#0a0a0a] rounded-2xl p-5">
+              {/* Input area */}
+              <input
+                type="url" required placeholder="https://linear.app"
+                value={url} onChange={e => setUrl(e.target.value)}
+                className="w-full bg-transparent text-white text-lg placeholder:text-zinc-600 focus:outline-none mb-4 px-1"
+              />
+
+              {/* Bottom toolbar */}
+              <div className="flex items-center justify-between">
+                {/* Left group */}
+                <div className="flex items-center gap-2">
+                  {/* + button */}
+                  <button type="button" className="w-8 h-8 rounded-full border border-zinc-700 bg-zinc-800/80 flex items-center justify-center text-zinc-400 hover:text-zinc-300 transition-colors">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                  {/* Normal pill */}
+                  <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-800/80 border border-zinc-700/50 text-zinc-400 text-sm hover:text-zinc-300 transition-colors">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+                    Normal
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                  {/* Deep Analysis pill */}
+                  <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-800/80 border border-zinc-700/50 text-zinc-400 text-sm hover:text-zinc-300 transition-colors">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                    Deep Analysis
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                </div>
+
+                {/* Right group */}
+                <div className="flex items-center gap-2">
+                  {/* Voice pill */}
+                  <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-800/80 border border-zinc-700/50 text-zinc-400 text-sm hover:text-zinc-300 transition-colors">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="6" width="4" height="12" rx="1"/><rect x="10" y="3" width="4" height="18" rx="1"/><rect x="18" y="8" width="4" height="8" rx="1"/></svg>
+                    Voice
+                  </button>
+                  {/* Send button (purple gradient) */}
+                  <motion.button
+                    type="submit" whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
+                    className="w-9 h-9 rounded-full flex items-center justify-center"
+                    style={{ background: "linear-gradient(135deg, #a855f7, #6366f1)" }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="white" stroke="none">
+                      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                    </svg>
+                  </motion.button>
+                </div>
+              </div>
+            </div>
+          </form>
+
+          {/* Service logos row — pinned to bottom, uniform size */}
+          <div className="fixed bottom-8 left-0 right-0 flex items-center justify-center gap-8 opacity-50">
+            {/* Firecrawl */}
+            <div className="flex items-center gap-1.5">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M12 2C8 6 4 10 4 14a8 8 0 0016 0c0-4-4-8-8-12zm0 18a6 6 0 01-6-6c0-2.5 2-5.5 6-9.5 4 4 6 7 6 9.5a6 6 0 01-6 6z"/></svg>
+              <span className="text-white text-sm font-medium">Firecrawl</span>
+            </div>
+            {/* Claude */}
+            <div className="flex items-center gap-1.5">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="white">
+                <path d="m3.127 10.604 3.135-1.76.053-.153-.053-.085H6.11l-.525-.032-1.791-.048-1.554-.065-1.505-.08-.38-.081L0 7.832l.036-.234.32-.214.455.04 1.009.069 1.513.105 1.097.064 1.626.17h.259l.036-.105-.089-.065-.068-.064-1.566-1.062-1.695-1.121-.887-.646-.48-.327-.243-.306-.104-.67.435-.48.585.04.15.04.593.456 1.267.981 1.654 1.218.242.202.097-.068.012-.049-.109-.181-.9-1.626-.96-1.655-.428-.686-.113-.411a2 2 0 0 1-.068-.484l.496-.674L4.446 0l.662.089.279.242.411.94.666 1.48 1.033 2.014.302.597.162.553.06.17h.105v-.097l.085-1.134.157-1.392.154-1.792.052-.504.25-.605.497-.327.387.186.319.456-.045.294-.19 1.23-.37 1.93-.243 1.29h.142l.161-.16.654-.868 1.097-1.372.484-.545.565-.601.363-.287h.686l.505.751-.226.775-.707.895-.585.759-.839 1.13-.524.904.048.072.125-.012 1.897-.403 1.024-.186 1.223-.21.553.258.06.263-.218.536-1.307.323-1.533.307-2.284.54-.028.02.032.04 1.029.098.44.024h1.077l2.005.15.525.346.315.424-.053.323-.807.411-3.631-.863-.872-.218h-.12v.073l.726.71 1.331 1.202 1.667 1.55.084.383-.214.302-.226-.032-1.464-1.101-.565-.497-1.28-1.077h-.084v.113l.295.432 1.557 2.34.08.718-.112.234-.404.141-.444-.08-.911-1.28-.94-1.44-.759-1.291-.093.053-.448 4.821-.21.246-.484.186-.403-.307-.214-.496.214-.98.258-1.28.21-1.016.19-1.263.112-.42-.008-.028-.092.012-.953 1.307-1.448 1.957-1.146 1.227-.274.109-.477-.247.045-.44.266-.39 1.586-2.018.956-1.25.617-.723-.004-.105h-.036l-4.212 2.736-.75.096-.324-.302.04-.496.154-.162 1.267-.871z"/>
+              </svg>
+              <span className="text-white text-sm font-medium">Claude</span>
+            </div>
+            {/* Reducto */}
+            <div className="flex items-center gap-1.5">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+              <span className="text-white text-sm font-medium">Reducto</span>
+            </div>
+            {/* MongoDB */}
+            <div className="flex items-center gap-1.5">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7zm0 10a3 3 0 110-6 3 3 0 010 6z"/></svg>
+              <span className="text-white text-sm font-medium">MongoDB</span>
+            </div>
+            {/* Resend */}
+            <div className="flex items-center gap-1.5">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+              <span className="text-white text-sm font-medium">Resend</span>
+            </div>
+          </div>
         </motion.div>
+      </div>
+    );
+  }
 
-        {/* Form */}
-        <motion.form
-          onSubmit={handleSubmit}
-          className="space-y-3 mb-10"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1 }}
-        >
-          <input
-            type="url"
-            required
-            placeholder="https://linear.app"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl focus:outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600 placeholder:text-zinc-600 transition-all"
-            disabled={running}
-          />
-          <input
-            type="email"
-            required
-            placeholder="you@email.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl focus:outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600 placeholder:text-zinc-600 transition-all"
-            disabled={running}
-          />
-          <button
-            type="submit"
-            disabled={running}
-            className="w-full py-3 bg-white text-black font-semibold rounded-xl hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
-          >
-            {running ? "Analyzing..." : "Analyze Competitors"}
-          </button>
-        </motion.form>
-
-        {/* Progress Bar */}
-        <AnimatePresence>
-          {running && (
-            <motion.div
-              initial={{ opacity: 0, scaleY: 0 }}
-              animate={{ opacity: 1, scaleY: 1 }}
-              exit={{ opacity: 0 }}
-              className="mb-8"
-            >
-              <div className="flex justify-between text-xs text-zinc-500 mb-1">
-                <span>Progress</span>
-                <span>{Math.round(progress)}%</span>
-              </div>
-              <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progress}%` }}
-                  transition={{ duration: 0.5, ease: "easeOut" }}
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Steps */}
-        <div className="space-y-3">
-          <AnimatePresence mode="popLayout">
-            {displaySteps.map((evt, i) => {
-              const meta = STEP_META[evt.step] || {
-                label: evt.step,
-                icon: "check",
-                description: "",
-              };
-              const isActive =
-                running && i === displaySteps.length - 1 && evt.step !== "done";
-              const isError = evt.step === "error";
-              const isDoneStep = evt.step === "done";
-
-              return (
-                <motion.div
-                  key={`${evt.step}-${i}`}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.3, ease: "easeOut" }}
-                  className={`rounded-xl border p-4 ${
-                    isError
-                      ? "border-red-800 bg-red-950/30"
-                      : isDoneStep
-                      ? "border-green-800 bg-green-950/30"
-                      : isActive
-                      ? "border-blue-800 bg-blue-950/20"
-                      : "border-zinc-800/50 bg-zinc-900/30"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`flex-shrink-0 ${
-                        isError
-                          ? "text-red-400"
-                          : isDoneStep
-                          ? "text-green-400"
-                          : isActive
-                          ? "text-blue-400"
-                          : "text-zinc-500"
-                      }`}
-                    >
-                      {isActive ? <Spinner /> : <Icon name={meta.icon} />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`font-medium text-sm ${
-                            isError
-                              ? "text-red-300"
-                              : isDoneStep
-                              ? "text-green-300"
-                              : isActive
-                              ? "text-blue-200"
-                              : "text-zinc-300"
-                          }`}
-                        >
-                          {meta.label}
-                        </span>
-                        {!isActive && !isError && !isDoneStep && (
-                          <span className="text-green-500 text-xs">done</span>
-                        )}
-                      </div>
-                      {(isActive ? meta.description : evt.detail) && (
-                        <p className="text-zinc-500 text-xs mt-0.5 truncate">
-                          {isActive ? meta.description : evt.detail}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Inline: Startup Info Card */}
-                  {evt.step === "extracting" && startupInfo && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      className="mt-3 p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50"
-                    >
-                      <div className="text-sm font-semibold text-white">
-                        {startupInfo.name}
-                      </div>
-                      <div className="text-xs text-zinc-400 mt-1">
-                        {startupInfo.product}
-                      </div>
-                      <div className="flex gap-2 mt-2 flex-wrap">
-                        <span className="text-[10px] px-2 py-0.5 bg-zinc-700/50 rounded-full text-zinc-300">
-                          {startupInfo.industry}
-                        </span>
-                        <span className="text-[10px] px-2 py-0.5 bg-zinc-700/50 rounded-full text-zinc-300">
-                          {startupInfo.targetMarket}
-                        </span>
-                      </div>
-                    </motion.div>
-                  )}
-
-                  {/* Inline: Competitor Chips */}
-                  {evt.step === "ranking" && competitors.length > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      className="mt-3 flex gap-2 flex-wrap"
-                    >
-                      {competitors.map((c, ci) => (
-                        <motion.span
-                          key={c.name}
-                          initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={{ delay: ci * 0.1 }}
-                          className="text-xs px-3 py-1 bg-zinc-800 border border-zinc-700 rounded-full text-zinc-200"
-                        >
-                          {c.name}
-                        </motion.span>
-                      ))}
-                    </motion.div>
-                  )}
-
-                  {/* Inline: Per-Competitor Scrape Progress */}
-                  {evt.step === "deep_scraping" && competitors.length > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      className="mt-3 flex gap-3 flex-wrap"
-                    >
-                      {competitors.map((c) => {
-                        const done = scrapedCompetitors.has(c.name);
-                        return (
-                          <div
-                            key={c.name}
-                            className="flex items-center gap-1.5 text-xs"
-                          >
-                            {done ? (
-                              <span className="text-green-400 text-[10px]">&#10003;</span>
-                            ) : (
-                              <div className="w-3 h-3 border border-zinc-600/50 border-t-zinc-400 rounded-full animate-spin" />
-                            )}
-                            <span
-                              className={
-                                done ? "text-zinc-300" : "text-zinc-500"
-                              }
-                            >
-                              {c.name}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </motion.div>
-                  )}
-
-                  {/* Inline: Analysis Preview */}
-                  {evt.step === "analyzing" && analysis && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      className="mt-3 space-y-2"
-                    >
-                      {analysis.competitors.map((c, ci) => (
-                        <motion.div
-                          key={c.name}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: ci * 0.08 }}
-                          className="flex items-center justify-between p-2 bg-zinc-800/50 rounded-lg border border-zinc-700/30"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-sm font-medium text-zinc-200 truncate">
-                              {c.name}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <ThreatBadge level={c.threatLevel} />
-                          </div>
-                        </motion.div>
-                      ))}
-
-                      {analysis.recommendations.length > 0 && (
-                        <div className="mt-2 p-2 bg-blue-950/30 border border-blue-900/30 rounded-lg">
-                          <div className="text-[10px] font-bold uppercase text-blue-400 mb-1">
-                            Top Recommendation
-                          </div>
-                          <div className="text-xs text-zinc-300">
-                            {analysis.recommendations[0]}
-                          </div>
-                        </div>
-                      )}
-                    </motion.div>
-                  )}
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
+  /* ─── RUNNING / DONE PHASE: Split Layout ─── */
+  return (
+    <div className="h-screen bg-[#0a0a0a] flex overflow-hidden">
+      {/* Left Panel */}
+      <div className="w-80 flex-shrink-0 border-r border-zinc-800/50 p-6 flex flex-col">
+        <div className="mb-6">
+          <h1 className="text-xl font-bold bg-gradient-to-r from-amber-200 to-yellow-400 bg-clip-text text-transparent">
+            Competitor Intel
+          </h1>
+          <p className="text-zinc-600 text-xs mt-1">Real-time competitive analysis</p>
         </div>
 
-        {/* Final Success */}
-        <AnimatePresence>
-          {isDone && (
+        <div className="mb-6 p-3 bg-zinc-900/50 rounded-xl border border-zinc-800/50">
+          <div className="text-[10px] uppercase text-zinc-600 mb-1">Analyzing</div>
+          <div className="text-sm text-zinc-300 truncate">{url}</div>
+        </div>
+
+        {/* Progress */}
+        <div className="mb-6">
+          <div className="flex justify-between text-[10px] text-zinc-600 mb-1">
+            <span>Progress</span><span>{Math.round(progress)}%</span>
+          </div>
+          <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
             <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-6 p-5 bg-green-950/30 border border-green-800 rounded-xl"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-green-500/20 rounded-full flex items-center justify-center">
-                  <Icon name="check" className="w-4 h-4 text-green-400" />
+              className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 rounded-full"
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.5 }}
+            />
+          </div>
+        </div>
+
+        {/* Service Status */}
+        <div className="space-y-2 mb-6">
+          <div className="text-[10px] uppercase text-zinc-600">Services</div>
+          {Object.entries(SERVICES).map(([key, svc]) => {
+            const used = events.some(e => STEP_SERVICE[e.step] === key);
+            const active = phase === "running" && events.length > 0 && STEP_SERVICE[events[events.length - 1].step] === key;
+            return (
+              <div key={key} className={`flex items-center gap-2 text-xs ${used ? "text-zinc-300" : "text-zinc-700"}`}>
+                <ServiceIcon service={key} size={14} />
+                <span className="flex-1">{svc.name}</span>
+                {active && <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />}
+                {used && !active && <span className="text-green-500 text-[10px]">&#10003;</span>}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Startup Info Card */}
+        <AnimatePresence>
+          {startupInfo && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-3 bg-zinc-900/50 rounded-xl border border-zinc-800/50 mb-4">
+              <div className="text-sm font-semibold text-white">{startupInfo.name}</div>
+              <div className="text-[11px] text-zinc-400 mt-1">{startupInfo.product}</div>
+              <div className="flex gap-1.5 mt-2 flex-wrap">
+                <span className="text-[9px] px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-400">{startupInfo.industry}</span>
+                <span className="text-[9px] px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-400">{startupInfo.targetMarket}</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Back button */}
+        {phase === "done" && (
+          <button onClick={() => { setPhase("input"); setEvents([]); }} className="mt-auto text-xs text-zinc-600 hover:text-zinc-400 transition-colors">
+            &#8592; New analysis
+          </button>
+        )}
+      </div>
+
+      {/* Right Panel: Activity Feed */}
+      <div ref={feedRef} className="flex-1 overflow-y-auto p-6 space-y-3">
+        <div className="text-xs uppercase text-zinc-600 mb-4">Agent Activity</div>
+
+        <AnimatePresence mode="popLayout">
+          {displaySteps.map((evt, i) => {
+            const serviceKey = STEP_SERVICE[evt.step] || "claude";
+            const svc = SERVICES[serviceKey];
+            const isActive = phase === "running" && i === displaySteps.length - 1;
+            const isError = evt.step === "error";
+            const isDone = evt.step === "done";
+
+            return (
+              <motion.div
+                key={`${evt.step}-${i}`}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                className={`rounded-xl border p-4 ${
+                  isError ? "border-red-800/50 bg-red-950/20" :
+                  isDone ? "border-green-800/50 bg-green-950/20" :
+                  isActive ? `${svc?.border || ""} ${svc?.bg || ""} shadow-lg` :
+                  "border-zinc-800/30 bg-zinc-900/20"
+                }`}
+                style={isActive ? { boxShadow: `0 0 30px rgba(245, 158, 11, 0.08)` } : {}}
+              >
+                {/* Service Header */}
+                <div className="flex items-center gap-2 mb-2">
+                  <ServiceIcon service={serviceKey} size={14} />
+                  <span className={`text-xs font-medium ${svc?.color || "text-zinc-400"}`}>
+                    {svc?.name || evt.step}
+                  </span>
+                  {isActive && <div className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse ml-auto" />}
+                  {!isActive && !isError && !isDone && <span className="text-green-500/60 text-[10px] ml-auto">done</span>}
                 </div>
-                <div>
-                  <div className="font-medium text-green-300">Report sent!</div>
-                  <div className="text-xs text-green-500/70">
-                    Check your inbox for the full competitive intelligence brief.
+
+                {/* Step Content */}
+                <div className="text-sm text-zinc-300">
+                  {STEP_LABELS[evt.step] || evt.detail || evt.step}
+                </div>
+                {evt.detail && (
+                  <div className="text-xs text-zinc-600 mt-1">{evt.detail}</div>
+                )}
+
+                {/* Inline: Competitor Chips after ranking */}
+                {evt.step === "ranking" && competitors.length > 0 && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 flex gap-2 flex-wrap">
+                    {competitors.map((c, ci) => (
+                      <motion.span key={c.name} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: ci * 0.08 }}
+                        className="text-[11px] px-2.5 py-1 bg-zinc-800/80 border border-zinc-700/50 rounded-full text-zinc-300"
+                      >{c.name}</motion.span>
+                    ))}
+                  </motion.div>
+                )}
+
+                {/* Inline: Per-competitor progress during deep scrape */}
+                {evt.step === "deep_scraping" && competitors.length > 0 && (
+                  <div className="mt-3 flex gap-3 flex-wrap">
+                    {competitors.map(c => {
+                      const done = scrapedCompetitors.has(c.name);
+                      return (
+                        <div key={c.name} className="flex items-center gap-1.5 text-[11px]">
+                          {done ? <span className="text-green-400">&#10003;</span> : <div className="w-3 h-3 border border-orange-500/30 border-t-orange-400 rounded-full animate-spin" />}
+                          <span className={done ? "text-zinc-300" : "text-zinc-600"}>{c.name}</span>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
+                )}
+
+                {/* Inline: Analysis Results */}
+                {evt.step === "analyzing" && analysis && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 space-y-2">
+                    {analysis.competitors.map((c, ci) => (
+                      <motion.div key={c.name} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: ci * 0.06 }}
+                        className="p-3 bg-zinc-800/40 rounded-lg border border-zinc-700/20"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium text-zinc-200">{c.name}</span>
+                          <ThreatBadge level={c.threatLevel} />
+                        </div>
+                        <div className="text-xs text-zinc-500">{c.summary}</div>
+                        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+                          <div><span className="text-zinc-600">Pricing: </span><span className="text-zinc-400">{c.pricing}</span></div>
+                          <div><span className="text-zinc-600">Differentiator: </span><span className="text-zinc-400">{c.keyDifferentiator}</span></div>
+                          <div><span className="text-zinc-600">Hiring: </span><span className="text-zinc-400">{c.hiringSignals}</span></div>
+                          <div><span className="text-zinc-600">Recent: </span><span className="text-zinc-400">{c.recentMoves}</span></div>
+                        </div>
+                      </motion.div>
+                    ))}
+                    {analysis.recommendations.length > 0 && (
+                      <div className="p-3 bg-amber-950/20 border border-amber-800/20 rounded-lg">
+                        <div className="text-[10px] font-bold uppercase text-amber-400/80 mb-1.5">Recommendations</div>
+                        <ol className="list-decimal list-inside space-y-1">
+                          {analysis.recommendations.map((r, ri) => (
+                            <li key={ri} className="text-xs text-zinc-300">{r}</li>
+                          ))}
+                        </ol>
+                      </div>
+                    )}
+                    {analysis.marketIntelligence.length > 0 && (
+                      <div className="p-3 bg-violet-950/20 border border-violet-800/20 rounded-lg">
+                        <div className="text-[10px] font-bold uppercase text-violet-400/80 mb-1.5">Market Intelligence</div>
+                        <ul className="space-y-1">
+                          {analysis.marketIntelligence.map((m, mi) => (
+                            <li key={mi} className="text-xs text-zinc-400">&#8226; {m}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
 
-        {/* Error */}
+        {/* Send Email Card */}
         <AnimatePresence>
-          {hasError && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-6 p-5 bg-red-950/30 border border-red-800 rounded-xl"
+          {phase === "done" && analysisId && !events.some(e => e.step === "error") && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+              className="rounded-xl border border-zinc-800/50 bg-zinc-900/30 p-4 mt-4"
             >
-              <div className="flex items-center gap-3">
-                <Icon name="alert" className="w-5 h-5 text-red-400" />
-                <div className="text-sm text-red-300">
-                  {events.find((e) => e.step === "error")?.detail || "Something went wrong"}
-                </div>
+              <div className="flex items-center gap-2 mb-3">
+                <ServiceIcon service="resend" size={14} />
+                <span className="text-xs font-medium text-purple-400">Resend</span>
               </div>
+              {sent ? (
+                <div className="text-sm text-green-400">Report sent! Check your inbox.</div>
+              ) : (
+                <form onSubmit={handleSendEmail} className="flex gap-2">
+                  <input
+                    type="email" required placeholder="Send report to email..."
+                    value={email} onChange={e => setEmail(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-zinc-800/50 border border-zinc-700/50 rounded-lg text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600"
+                  />
+                  <button type="submit" disabled={sending}
+                    className="px-4 py-2 bg-gradient-to-r from-amber-600 to-yellow-500 text-black font-medium text-sm rounded-lg hover:shadow-lg hover:shadow-amber-500/20 disabled:opacity-50 transition-all"
+                  >
+                    {sending ? "..." : "Send"}
+                  </button>
+                </form>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
-
-        <div ref={bottomRef} />
       </div>
     </div>
   );

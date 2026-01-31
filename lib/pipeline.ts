@@ -9,7 +9,7 @@ const resend = new Resend(process.env.RESEND_API_KEY!);
 
 type Emit = (step: string, detail?: string, data?: Record<string, unknown>) => void;
 
-interface CompetitorInfo {
+export interface CompetitorInfo {
   name: string;
   url: string;
   pricing: string;
@@ -20,11 +20,13 @@ interface CompetitorInfo {
   summary: string;
 }
 
-export async function runPipeline(
-  startupUrl: string,
-  email: string,
-  emit: Emit
-) {
+export interface AnalysisResult {
+  competitors: CompetitorInfo[];
+  marketIntelligence: string[];
+  recommendations: string[];
+}
+
+export async function runPipeline(startupUrl: string, emit: Emit) {
   // 1. Scrape startup
   emit("scraping", `Scraping ${startupUrl}...`);
   const scrapeResult = await firecrawl.scrape(startupUrl, {
@@ -34,15 +36,15 @@ export async function runPipeline(
   if (!startupContent) throw new Error("Failed to scrape startup URL");
 
   // 2. Extract startup info
-  emit("extracting", "Analyzing startup...");
+  emit("extracting", "Analyzing with Claude...");
   const extractionRaw = await ask(
-    `Analyze this startup website content and return ONLY valid JSON (no markdown):
+    `Analyze this website content and return ONLY valid JSON (no markdown):
 {
-  "name": "company name",
+  "name": "company/organization name",
   "product": "what they do in 1-2 sentences",
   "industry": "industry/category",
   "keywords": ["keyword1", "keyword2", "keyword3"],
-  "targetMarket": "who they sell to"
+  "targetMarket": "who they serve"
 }
 
 Website content:
@@ -52,7 +54,7 @@ ${startupContent}`
   emit("startup_info", `Identified: ${extraction.name}`, { startup: extraction });
 
   // 3. Search for competitors
-  emit("searching", `Finding competitors for ${extraction.name}...`);
+  emit("searching", `3 parallel searches via Firecrawl...`);
   const queries = [
     `${extraction.name} alternatives`,
     `${extraction.name} vs competitors`,
@@ -68,14 +70,14 @@ ${startupContent}`
     .map((r: any) => ({ title: r.title || "", url: r.url || "", description: r.description || "" }));
 
   // 4. Rank competitors
-  emit("ranking", "Ranking top competitors...");
+  emit("ranking", "Claude is picking the top threats...");
   const rankingRaw = await ask(
-    `Given this startup: ${extraction.name} - ${extraction.product}
+    `Given this company: ${extraction.name} - ${extraction.product}
 
 Here are search results for competitors:
 ${JSON.stringify(allResults, null, 2)}
 
-Return ONLY valid JSON array of the top 5 most relevant COMPETITORS (not the startup itself, not review sites like G2/Capterra). Each entry: {"name": "...", "url": "..."}
+Return ONLY valid JSON array of the top 5 most relevant COMPETITORS (not the company itself, not review sites like G2/Capterra). Each entry: {"name": "...", "url": "..."}
 Exclude ${extraction.name} itself and any non-competitor URLs (blogs, review aggregators, news articles).`
   );
   const topCompetitors: { name: string; url: string }[] = JSON.parse(
@@ -84,7 +86,7 @@ Exclude ${extraction.name} itself and any non-competitor URLs (blogs, review agg
   emit("competitors_found", `Found ${topCompetitors.length} competitors`, { competitors: topCompetitors });
 
   // 5. Deep scrape competitors
-  emit("deep_scraping", `Deep scraping ${topCompetitors.length} competitors...`);
+  emit("deep_scraping", `Scraping ${topCompetitors.length} competitors in parallel...`);
   const competitorData = await Promise.all(
     topCompetitors.slice(0, 5).map(async (comp) => {
       emit("competitor_scraping", `Scraping ${comp.name}...`, { name: comp.name });
@@ -95,12 +97,12 @@ Exclude ${extraction.name} itself and any non-competitor URLs (blogs, review agg
         firecrawl.scrape(`${comp.url}/careers`, { formats: ["markdown"] }).catch(() => null),
       ]);
 
-      // Look for PDF links in scraped content
       let pdfContent = "";
       for (const page of pages) {
         if (!page?.markdown) continue;
         const pdfUrls = page.markdown.match(/https?:\/\/[^\s)]+\.pdf/gi) || [];
         for (const pdfUrl of pdfUrls.slice(0, 1)) {
+          emit("pdf_parsing", `Parsing PDF from ${comp.name}...`, { name: comp.name });
           const parsed = await parsePdf(pdfUrl);
           if (parsed) pdfContent += parsed.slice(0, 2000);
         }
@@ -121,7 +123,7 @@ Exclude ${extraction.name} itself and any non-competitor URLs (blogs, review agg
   );
 
   // 6. Analyze competitors
-  emit("analyzing", "Generating competitive analysis...");
+  emit("analyzing", "Claude is writing the competitive brief...");
   const analysisRaw = await ask(
     `You are a competitive intelligence analyst. Analyze these competitors against ${extraction.name} (${extraction.product}).
 
@@ -147,18 +149,17 @@ Competitor data:
 ${JSON.stringify(competitorData, null, 2).slice(0, 30000)}`,
     "You are an expert competitive intelligence analyst. Be specific and actionable. Base analysis only on the provided data."
   );
-  const analysis = JSON.parse(analysisRaw.replace(/```json?\n?|\n?```/g, ""));
+  const analysis: AnalysisResult = JSON.parse(analysisRaw.replace(/```json?\n?|\n?```/g, ""));
   emit("analysis_ready", "Analysis complete", { analysis });
 
   // 7. Store in MongoDB
-  emit("storing", "Saving to database...");
+  emit("storing", "Saving snapshot to MongoDB...");
   const db = await getDb();
   const doc = {
     startup_url: startupUrl,
     startup_name: extraction.name,
     startup_summary: extraction.product,
     analyzed_at: new Date(),
-    user_email: email,
     competitors: analysis.competitors,
     market_intelligence: analysis.marketIntelligence,
     recommendations: analysis.recommendations,
@@ -166,32 +167,17 @@ ${JSON.stringify(competitorData, null, 2).slice(0, 30000)}`,
   };
   const insertResult = await db.collection("analyses").insertOne(doc);
 
-  // 8. Send email
-  emit("emailing", "Sending report...");
-  const html = buildEmailHtml(extraction, analysis);
-  await resend.emails.send({
-    from: "Competitor Intel <onboarding@resend.dev>",
-    to: email,
-    subject: `Competitor Intel: ${extraction.name} vs ${analysis.competitors.length} Competitors`,
-    html,
+  emit("done", "Analysis complete!", {
+    analysisId: insertResult.insertedId.toString(),
+    startup: extraction,
+    analysis,
   });
-
-  await db.collection("analyses").updateOne(
-    { _id: insertResult.insertedId },
-    { $set: { report_sent: true } }
-  );
-
-  emit("done", `Analysis complete! Report sent to ${email}`);
-  return analysis;
+  return { analysis, extraction, analysisId: insertResult.insertedId.toString() };
 }
 
-function buildEmailHtml(
+export function buildEmailHtml(
   startup: { name: string; product: string },
-  analysis: {
-    competitors: CompetitorInfo[];
-    marketIntelligence: string[];
-    recommendations: string[];
-  }
+  analysis: AnalysisResult
 ): string {
   const highThreats = analysis.competitors.filter(
     (c) => c.threatLevel === "high"

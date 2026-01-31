@@ -4,10 +4,10 @@ import { runPipeline } from "@/lib/pipeline";
 export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
-  const { startupUrl, email } = await req.json();
+  const { startupUrl } = await req.json();
 
-  if (!startupUrl || !email) {
-    return Response.json({ error: "Missing startupUrl or email" }, { status: 400 });
+  if (!startupUrl) {
+    return Response.json({ error: "Missing startupUrl" }, { status: 400 });
   }
 
   const encoder = new TextEncoder();
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
       };
 
       try {
-        await runPipeline(startupUrl, email, emit);
+        await runPipeline(startupUrl, emit);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Unknown error";
         emit("error", message);
