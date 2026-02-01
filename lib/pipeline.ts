@@ -9,21 +9,48 @@ const resend = new Resend(process.env.RESEND_API_KEY!);
 
 type Emit = (step: string, detail?: string, data?: Record<string, unknown>) => void;
 
+export interface PricingTier {
+  low: number;
+  high: number;
+  model: string;
+}
+
+export interface Recommendation {
+  action: string;
+  priority: "high" | "medium" | "low";
+  impact: string;
+}
+
+export interface MarketOverview {
+  totalAddressableMarket: string;
+  growthTrend: "growing" | "stable" | "declining";
+  consolidationRisk: "high" | "medium" | "low";
+}
+
 export interface CompetitorInfo {
   name: string;
   url: string;
   pricing: string;
+  pricingTier: PricingTier;
   recentMoves: string;
   hiringSignals: string;
   keyDifferentiator: string;
   threatLevel: string;
+  threatScore: number;
+  featureOverlap: number;
+  marketPresence: number;
+  fundingStage: string;
+  estimatedEmployees: string;
+  strengths: string[];
+  weaknesses: string[];
   summary: string;
 }
 
 export interface AnalysisResult {
   competitors: CompetitorInfo[];
   marketIntelligence: string[];
-  recommendations: string[];
+  recommendations: Recommendation[];
+  marketOverview?: MarketOverview;
 }
 
 export async function runPipeline(startupUrl: string, emit: Emit) {
@@ -87,6 +114,7 @@ Exclude ${extraction.name} itself and any non-competitor URLs (blogs, review agg
 
   // 5. Deep scrape competitors
   emit("deep_scraping", `Scraping ${topCompetitors.length} competitors in parallel...`);
+  let foundPdfs = false;
   const competitorData = await Promise.all(
     topCompetitors.slice(0, 5).map(async (comp) => {
       emit("competitor_scraping", `Scraping ${comp.name}...`, { name: comp.name });
@@ -98,14 +126,37 @@ Exclude ${extraction.name} itself and any non-competitor URLs (blogs, review agg
       ]);
 
       let pdfContent = "";
+
+      // Collect PDF URLs from scraped pages
+      const pdfUrls: string[] = [];
       for (const page of pages) {
         if (!page?.markdown) continue;
-        const pdfUrls = page.markdown.match(/https?:\/\/[^\s)]+\.pdf/gi) || [];
-        for (const pdfUrl of pdfUrls.slice(0, 1)) {
-          emit("pdf_parsing", `Parsing PDF from ${comp.name}...`, { name: comp.name });
-          const parsed = await parsePdf(pdfUrl);
-          if (parsed) pdfContent += parsed.slice(0, 2000);
-        }
+        const found = page.markdown.match(/https?:\/\/[^\s)"']+\.pdf(?:\?[^\s)"']*)?/gi) || [];
+        pdfUrls.push(...found);
+      }
+
+      // If no PDFs in pages, search for public PDFs (pitch decks, reports, whitepapers)
+      if (pdfUrls.length === 0) {
+        try {
+          const pdfSearch = await firecrawl.search(
+            `${comp.name} filetype:pdf pitch deck OR annual report OR whitepaper OR pricing`,
+            { limit: 3 }
+          );
+          const results = (pdfSearch as any).web || (pdfSearch as any).data || [];
+          for (const r of results) {
+            if (r.url && /\.pdf(\?.*)?$/i.test(r.url)) {
+              pdfUrls.push(r.url);
+            }
+          }
+        } catch {}
+      }
+
+      // Parse found PDFs with Reducto
+      for (const pdfUrl of pdfUrls.slice(0, 2)) {
+        foundPdfs = true;
+        emit("pdf_parsing", `Parsing PDF from ${comp.name}...`, { name: comp.name, url: pdfUrl });
+        const parsed = await parsePdf(pdfUrl);
+        if (parsed) pdfContent += parsed.slice(0, 2000);
       }
 
       emit("competitor_done", `${comp.name} scraped`, { name: comp.name });
@@ -122,32 +173,58 @@ Exclude ${extraction.name} itself and any non-competitor URLs (blogs, review agg
     })
   );
 
+  if (!foundPdfs) {
+    emit("pdf_skip", "No PDFs found on competitor sites");
+  }
+
   // 6. Analyze competitors
   emit("analyzing", "Claude is writing the competitive brief...");
   const analysisRaw = await ask(
     `You are a competitive intelligence analyst. Analyze these competitors against ${extraction.name} (${extraction.product}).
 
-For each competitor, provide detailed analysis. Return ONLY valid JSON:
+For each competitor, provide detailed analysis with NUMERIC scores. Return ONLY valid JSON:
 {
   "competitors": [
     {
       "name": "...",
       "url": "...",
       "summary": "what they do",
-      "pricing": "pricing breakdown",
+      "pricing": "pricing breakdown text",
+      "pricingTier": { "low": 0, "high": 99, "model": "freemium|subscription|usage|enterprise|one-time" },
       "recentMoves": "recent activity from blog/news",
       "hiringSignals": "notable job postings and what they signal",
       "keyDifferentiator": "what makes them a threat",
-      "threatLevel": "high|medium|low"
+      "threatLevel": "high|medium|low",
+      "threatScore": 75,
+      "featureOverlap": 60,
+      "marketPresence": 50,
+      "fundingStage": "Seed|Series A|Series B|Series C+|Public|Bootstrapped|Unknown",
+      "estimatedEmployees": "1-10|11-50|51-200|201-500|500+",
+      "strengths": ["strength1", "strength2"],
+      "weaknesses": ["weakness1", "weakness2"]
     }
   ],
   "marketIntelligence": ["insight1", "insight2", "insight3"],
-  "recommendations": ["actionable rec 1", "actionable rec 2", "actionable rec 3"]
+  "recommendations": [
+    { "action": "actionable recommendation", "priority": "high|medium|low", "impact": "expected impact description" }
+  ],
+  "marketOverview": {
+    "totalAddressableMarket": "estimated TAM like $5B or Growing niche",
+    "growthTrend": "growing|stable|declining",
+    "consolidationRisk": "high|medium|low"
+  }
 }
+
+IMPORTANT scoring guidelines:
+- threatScore: 0-100, how dangerous this competitor is overall
+- featureOverlap: 0-100, percentage of feature similarity with ${extraction.name}
+- marketPresence: 0-100, how visible/established they are in the market
+- pricingTier.low/high: numeric dollar amounts per month (use 0 if free tier exists, estimate if unclear)
+- strengths/weaknesses: 2-3 items each, be specific
 
 Competitor data:
 ${JSON.stringify(competitorData, null, 2).slice(0, 30000)}`,
-    "You are an expert competitive intelligence analyst. Be specific and actionable. Base analysis only on the provided data."
+    "You are an expert competitive intelligence analyst. Be specific and actionable. Base analysis only on the provided data. Always return valid numeric scores."
   );
   const analysis: AnalysisResult = JSON.parse(analysisRaw.replace(/```json?\n?|\n?```/g, ""));
   emit("analysis_ready", "Analysis complete", { analysis });
@@ -163,6 +240,7 @@ ${JSON.stringify(competitorData, null, 2).slice(0, 30000)}`,
     competitors: analysis.competitors,
     market_intelligence: analysis.marketIntelligence,
     recommendations: analysis.recommendations,
+    market_overview: analysis.marketOverview,
     report_sent: false,
   };
   const insertResult = await db.collection("analyses").insertOne(doc);
