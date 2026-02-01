@@ -4,8 +4,12 @@ import { ask } from "./anthropic";
 import { getDb } from "./mongodb";
 import { parsePdf } from "./reducto";
 
-const firecrawl = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY! });
-const resend = new Resend(process.env.RESEND_API_KEY!);
+function getFirecrawl() {
+  return new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY! });
+}
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY!);
+}
 
 type Emit = (step: string, detail?: string, data?: Record<string, unknown>) => void;
 
@@ -54,6 +58,8 @@ export interface AnalysisResult {
 }
 
 export async function runPipeline(startupUrl: string, emit: Emit) {
+  const firecrawl = getFirecrawl();
+
   // 1. Scrape startup
   emit("scraping", `Scraping ${startupUrl}...`);
   const scrapeResult = await firecrawl.scrape(startupUrl, {

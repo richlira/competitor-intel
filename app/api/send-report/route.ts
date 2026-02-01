@@ -4,9 +4,8 @@ import { Resend } from "resend";
 import { getDb } from "@/lib/mongodb";
 import { buildEmailHtml } from "@/lib/pipeline";
 
-const resend = new Resend(process.env.RESEND_API_KEY!);
-
 export async function POST(req: NextRequest) {
+  const resend = new Resend(process.env.RESEND_API_KEY!);
   const { email, analysisId } = await req.json();
 
   if (!email || !analysisId) {
