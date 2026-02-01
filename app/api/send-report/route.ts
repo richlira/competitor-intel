@@ -3,7 +3,6 @@ import { ObjectId } from "mongodb";
 import { Resend } from "resend";
 import { getDb } from "@/lib/mongodb";
 import { buildEmailHtml } from "@/lib/pipeline";
-import { generateReportHTML } from "@/lib/pdf-generator";
 import { generatePdfBuffer } from "@/lib/browser";
 
 export const maxDuration = 60;
@@ -33,19 +32,17 @@ export async function POST(req: NextRequest) {
   const emailHtml = buildEmailHtml(startup, analysis);
   const slug = startup.name.toLowerCase().replace(/\s+/g, "-");
 
-  // Generate PDF
-  const reportHtml = generateReportHTML({
-    startup_name: doc.startup_name,
-    startup_url: doc.startup_url,
-    analyzed_at: doc.analyzed_at,
-    competitors: doc.competitors || [],
-    market_intelligence: doc.market_intelligence || [],
-    recommendations: doc.recommendations || [],
-  });
-
+  // Generate PDF using jsPDF (pure JS, no browser needed)
   let pdfBuffer: Buffer | null = null;
   try {
-    pdfBuffer = await generatePdfBuffer(reportHtml);
+    pdfBuffer = generatePdfBuffer({
+      startup_name: doc.startup_name,
+      startup_url: doc.startup_url,
+      analyzed_at: doc.analyzed_at,
+      competitors: doc.competitors || [],
+      market_intelligence: doc.market_intelligence || [],
+      recommendations: doc.recommendations || [],
+    });
   } catch (err) {
     console.error("PDF generation for email failed:", err);
   }
