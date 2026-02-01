@@ -208,6 +208,21 @@ export default function Home() {
     } catch {}
   }, []);
 
+  /* ─── History for input phase ─── */
+  const [history, setHistory] = useState<{ _id: string; startup_name: string; analyzed_at: string }[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  useEffect(() => {
+    if (phase === "input") {
+      setHistoryLoading(true);
+      fetch("/api/history")
+        .then(r => r.json())
+        .then(data => setHistory(data))
+        .catch(() => {})
+        .finally(() => setHistoryLoading(false));
+    }
+  }, [phase]);
+
   /* ─── INPUT PHASE ─── */
   if (phase === "input") {
     return (
@@ -289,6 +304,28 @@ export default function Home() {
               </div>
             </div>
           </form>
+
+          {/* Recent analyses */}
+          {!historyLoading && history.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="mt-8">
+              <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium mb-3">Recent analyses</p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {history.slice(0, 8).map(item => (
+                  <button
+                    key={item._id}
+                    onClick={() => loadAnalysis(item._id)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-50 border border-zinc-200 hover:border-amber-300 hover:bg-amber-50 transition-colors text-left group"
+                  >
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-400 group-hover:bg-amber-500 flex-shrink-0" />
+                    <div>
+                      <div className="text-xs text-zinc-700 group-hover:text-zinc-900 font-medium">{item.startup_name}</div>
+                      <div className="text-[9px] text-zinc-400">{new Date(item.analyzed_at).toLocaleDateString()}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
 
           {/* Service logos row — pinned to bottom, uniform size */}
           <div className="fixed bottom-8 left-0 right-0 flex items-center justify-center gap-8 opacity-40">
