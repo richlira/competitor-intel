@@ -66,19 +66,26 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 export default function ReportPanel({ analysis, startupName, analysisId }: ReportPanelProps) {
   const [exporting, setExporting] = useState(false);
+  const [pdfError, setPdfError] = useState("");
   const [emailOpen, setEmailOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [emailError, setEmailError] = useState("");
 
   async function handleExportPdf() {
     setExporting(true);
+    setPdfError("");
     try {
       const res = await fetch("/api/export-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ analysisId }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || `Export failed (${res.status})`);
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -86,7 +93,9 @@ export default function ReportPanel({ analysis, startupName, analysisId }: Repor
       a.download = `competitor-intel-${startupName}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch {} finally {
+    } catch (err: any) {
+      setPdfError(err.message || "PDF export failed");
+    } finally {
       setExporting(false);
     }
   }
@@ -95,14 +104,21 @@ export default function ReportPanel({ analysis, startupName, analysisId }: Repor
     e.preventDefault();
     if (!email) return;
     setSending(true);
+    setEmailError("");
     try {
-      await fetch("/api/send-report", {
+      const res = await fetch("/api/send-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, analysisId }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || `Send failed (${res.status})`);
+      }
       setSent(true);
-    } catch {} finally {
+    } catch (err: any) {
+      setEmailError(err.message || "Failed to send email");
+    } finally {
       setSending(false);
     }
   }
@@ -145,20 +161,29 @@ export default function ReportPanel({ analysis, startupName, analysisId }: Repor
         </div>
       </div>
 
+      {pdfError && (
+        <div className="text-xs text-red-700 p-2 bg-red-50 rounded-lg border border-red-200">{pdfError}</div>
+      )}
+
       {/* Email form */}
       {emailOpen && (
         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}>
           {sent ? (
-            <div className="text-xs text-green-700 p-3 bg-green-50 rounded-lg border border-green-200">Report sent!</div>
+            <div className="text-xs text-green-700 p-3 bg-green-50 rounded-lg border border-green-200">Report sent via Resend with PDF attached!</div>
           ) : (
-            <form onSubmit={handleSendEmail} className="flex gap-2">
-              <input type="email" required placeholder="email@example.com" value={email} onChange={e => setEmail(e.target.value)}
-                className="flex-1 px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:border-zinc-400" />
-              <button type="submit" disabled={sending}
-                className="px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 text-white font-medium text-xs rounded-lg disabled:opacity-50">
-                {sending ? "..." : "Send"}
-              </button>
-            </form>
+            <div className="space-y-2">
+              {emailError && (
+                <div className="text-xs text-red-700 p-2 bg-red-50 rounded-lg border border-red-200">{emailError}</div>
+              )}
+              <form onSubmit={handleSendEmail} className="flex gap-2">
+                <input type="email" required placeholder="email@example.com" value={email} onChange={e => setEmail(e.target.value)}
+                  className="flex-1 px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:border-zinc-400" />
+                <button type="submit" disabled={sending}
+                  className="px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 text-white font-medium text-xs rounded-lg disabled:opacity-50">
+                  {sending ? "Sending..." : "Send via Resend"}
+                </button>
+              </form>
+            </div>
           )}
         </motion.div>
       )}
