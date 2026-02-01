@@ -367,7 +367,19 @@ export default function Home() {
     <div className="h-screen bg-zinc-50 flex overflow-hidden">
       {/* Left: History Panel */}
       <div className="w-[15%] min-w-[180px] border-r border-zinc-200 bg-white p-4 flex flex-col">
-        <div className="mb-4">
+        <div className="mb-4 flex items-center gap-2">
+          <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
+            <circle cx="24" cy="24" r="22" stroke="url(#sidebar-grad)" strokeWidth="2.5" opacity="0.8"/>
+            <circle cx="24" cy="24" r="14" stroke="url(#sidebar-grad)" strokeWidth="1.5" opacity="0.5"/>
+            <line x1="24" y1="2" x2="24" y2="12" stroke="url(#sidebar-grad)" strokeWidth="2" strokeLinecap="round"/>
+            <line x1="24" y1="36" x2="24" y2="46" stroke="url(#sidebar-grad)" strokeWidth="2" strokeLinecap="round"/>
+            <line x1="2" y1="24" x2="12" y2="24" stroke="url(#sidebar-grad)" strokeWidth="2" strokeLinecap="round"/>
+            <line x1="36" y1="24" x2="46" y2="24" stroke="url(#sidebar-grad)" strokeWidth="2" strokeLinecap="round"/>
+            <rect x="16" y="28" width="4" height="8" rx="1" fill="url(#sidebar-grad)"/>
+            <rect x="22" y="22" width="4" height="14" rx="1" fill="url(#sidebar-grad)"/>
+            <rect x="28" y="16" width="4" height="20" rx="1" fill="url(#sidebar-grad)"/>
+            <defs><linearGradient id="sidebar-grad" x1="0" y1="0" x2="48" y2="48"><stop stopColor="#fcd34d"/><stop offset="1" stopColor="#f59e0b"/></linearGradient></defs>
+          </svg>
           <h1 className="text-lg font-bold bg-gradient-to-r from-amber-600 to-yellow-500 bg-clip-text text-transparent">
             Competitor Intel
           </h1>

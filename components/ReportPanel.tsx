@@ -86,13 +86,13 @@ export default function ReportPanel({ analysis, startupName, analysisId }: Repor
         const data = await res.json().catch(() => null);
         throw new Error(data?.error || `Export failed (${res.status})`);
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `competitor-intel-${startupName}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const htmlString = await res.text();
+      const win = window.open("", "_blank");
+      if (!win) throw new Error("Pop-up blocked. Please allow pop-ups and try again.");
+      win.document.write(htmlString);
+      win.document.close();
+      win.onafterprint = () => win.close();
+      setTimeout(() => win.print(), 300);
     } catch (err: any) {
       setPdfError(err.message || "PDF export failed");
     } finally {

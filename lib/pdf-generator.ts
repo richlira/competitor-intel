@@ -15,7 +15,7 @@ interface ReportData {
   analyzed_at: string;
   competitors: CompetitorData[];
   market_intelligence: string[];
-  recommendations: string[];
+  recommendations: (string | { action: string; priority?: string; impact?: string })[];
 }
 
 const THREAT_COLORS = {
@@ -35,10 +35,12 @@ export function generateReportHTML(report: ReportData): string {
       const colors = THREAT_COLORS[level] || THREAT_COLORS.low;
       return `
         <div style="border:1px solid ${colors.border};border-radius:12px;padding:20px;margin-bottom:16px;background:${colors.bg}10;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-            <h3 style="margin:0;font-size:18px;color:#1a1a1a;">${c.name}</h3>
-            <span style="background:${colors.bg};color:${colors.text};padding:4px 12px;border-radius:20px;font-size:11px;font-weight:bold;text-transform:uppercase;">${c.threatLevel}</span>
-          </div>
+          <table style="width:100%;margin-bottom:12px;border-collapse:collapse;"><tr>
+            <td style="padding:0;vertical-align:middle;"><h3 style="margin:0;font-size:18px;line-height:24px;color:#1a1a1a;">${c.name}</h3></td>
+            <td style="padding:0;text-align:right;vertical-align:middle;width:90px;">
+              <div style="background:${colors.bg};color:${colors.text};display:block;width:80px;height:24px;line-height:24px;border-radius:12px;font-size:11px;font-weight:bold;text-transform:uppercase;text-align:center;margin-left:auto;">${c.threatLevel}</div>
+            </td>
+          </tr></table>
           <p style="color:#555;font-size:14px;margin:0 0 12px;">${c.summary}</p>
           <table style="width:100%;font-size:13px;color:#666;">
             <tr><td style="padding:4px 0;"><strong>Pricing:</strong> ${c.pricing}</td><td style="padding:4px 0;"><strong>Differentiator:</strong> ${c.keyDifferentiator}</td></tr>
@@ -49,7 +51,10 @@ export function generateReportHTML(report: ReportData): string {
     .join("");
 
   const recommendationsHtml = report.recommendations
-    .map((r, i) => `<li style="margin-bottom:8px;color:#333;font-size:14px;">${r}</li>`)
+    .map((r) => {
+      const text = typeof r === "string" ? r : r.action;
+      return `<li style="margin-bottom:8px;color:#333;font-size:14px;">${text}</li>`;
+    })
     .join("");
 
   const intelligenceHtml = report.market_intelligence

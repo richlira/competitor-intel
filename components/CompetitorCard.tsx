@@ -64,7 +64,7 @@ export default function CompetitorCard({ competitor }: { competitor: CompetitorA
         {competitor.threatScore != null && (
           <span className="text-[10px] font-mono text-zinc-400">{competitor.threatScore}</span>
         )}
-        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${colors.badge}`}>
+        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border leading-none flex items-center ${colors.badge}`}>
           {competitor.threatLevel}
         </span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"

@@ -4,21 +4,9 @@ import { Resend } from "resend";
 import { getDb } from "@/lib/mongodb";
 import { buildEmailHtml } from "@/lib/pipeline";
 import { generateReportHTML } from "@/lib/pdf-generator";
-import chromium from "@sparticuz/chromium";
-import puppeteerCore from "puppeteer-core";
+import { generatePdfBuffer } from "@/lib/browser";
 
 export const maxDuration = 60;
-
-async function getBrowser() {
-  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    return puppeteerCore.launch({
-      args: chromium.args,
-      executablePath: await chromium.executablePath(),
-      headless: true,
-    });
-  }
-  return puppeteerCore.launch({ channel: "chrome", headless: true });
-}
 
 export async function POST(req: NextRequest) {
   const resend = new Resend(process.env.RESEND_API_KEY!);
@@ -43,8 +31,9 @@ export async function POST(req: NextRequest) {
   };
 
   const emailHtml = buildEmailHtml(startup, analysis);
+  const slug = startup.name.toLowerCase().replace(/\s+/g, "-");
 
-  // Generate PDF attachment
+  // Generate PDF
   const reportHtml = generateReportHTML({
     startup_name: doc.startup_name,
     startup_url: doc.startup_url,
@@ -56,23 +45,12 @@ export async function POST(req: NextRequest) {
 
   let pdfBuffer: Buffer | null = null;
   try {
-    const browser = await getBrowser();
-    const page = await browser.newPage();
-    await page.setContent(reportHtml, { waitUntil: "networkidle0" });
-    const pdf = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "20mm", bottom: "20mm", left: "15mm", right: "15mm" },
-    });
-    await browser.close();
-    pdfBuffer = Buffer.from(pdf);
+    pdfBuffer = await generatePdfBuffer(reportHtml);
   } catch (err) {
-    console.error("PDF generation for email failed, sending without PDF:", err);
+    console.error("PDF generation for email failed:", err);
   }
 
-  const slug = startup.name.toLowerCase().replace(/\s+/g, "-");
   const attachments: { filename: string; content: Buffer }[] = [];
-
   if (pdfBuffer) {
     attachments.push({ filename: `competitor-intel-${slug}.pdf`, content: pdfBuffer });
   }
